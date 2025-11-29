@@ -19,11 +19,11 @@ public class CreateInvoiceRequest
     [JsonPropertyName("order_id")]
     public string? OrderId { get; set; }
 
-    [JsonPropertyName("email")]
-    public string? Email { get; set; }
+    //[JsonPropertyName("email")]
+    //public string? Email { get; set; }
 
-    [JsonPropertyName("add_fields")]
-    public AdditionalFields? AddFields { get; set; }
+    //[JsonPropertyName("add_fields")]
+    //public AdditionalFields? AddFields { get; set; }
 }
 
 /// <summary>

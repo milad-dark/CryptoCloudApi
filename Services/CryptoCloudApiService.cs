@@ -59,8 +59,8 @@ public class CryptoCloudApiService
                 Amount = amount,
                 Currency = currency ?? _settings.DefaultCurrency,
                 OrderId = orderId,
-                Email = email,
-                AddFields = additionalFields
+                //Email = email,
+                //AddFields = additionalFields
             };
 
             string? json = JsonSerializer.Serialize(request, _jsonOptions);

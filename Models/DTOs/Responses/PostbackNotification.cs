@@ -30,45 +30,42 @@ public class PostbackNotification
 }
 
 /// <summary>
-/// Detailed invoice information in postback
+/// Detailed invoice information included in postback
 /// </summary>
 public class PostbackInvoiceInfo
 {
     [JsonPropertyName("uuid")]
-    public string Uuid { get; set; } = string.Empty;
+    public string Uuid { get; set; }
 
     [JsonPropertyName("created")]
-    public string Created { get; set; } = string.Empty;
+    public string Created { get; set; }
 
     [JsonPropertyName("address")]
-    public string? Address { get; set; }
+    public string Address { get; set; }
 
     [JsonPropertyName("currency")]
     public CurrencyInfo? Currency { get; set; }
 
     [JsonPropertyName("date_finished")]
-    public string? DateFinished { get; set; }
+    public string DateFinished { get; set; }
 
     [JsonPropertyName("expiry_date")]
-    public string? ExpiryDate { get; set; }
+    public string ExpiryDate { get; set; }
 
     [JsonPropertyName("side_commission")]
-    public string SideCommission { get; set; } = string.Empty;
+    public string SideCommission { get; set; }
 
     [JsonPropertyName("type_payments")]
-    public string TypePayments { get; set; } = string.Empty;
+    public string TypePayments { get; set; }
 
     [JsonPropertyName("amount")]
     public decimal Amount { get; set; }
 
-    [JsonPropertyName("amount_usd")]
-    public decimal AmountUsd { get; set; }
-
     [JsonPropertyName("status")]
-    public string Status { get; set; } = string.Empty;
+    public string Status { get; set; }
 
     [JsonPropertyName("invoice_status")]
-    public string InvoiceStatus { get; set; } = string.Empty;
+    public string InvoiceStatus { get; set; }
 
     [JsonPropertyName("is_email_required")]
     public bool IsEmailRequired { get; set; }
@@ -78,6 +75,21 @@ public class PostbackInvoiceInfo
 
     [JsonPropertyName("tx_list")]
     public List<string>? TxList { get; set; }
+
+    [JsonPropertyName("amount_in_crypto")]
+    public decimal AmountInCrypto { get; set; }
+
+    [JsonPropertyName("amount_in_fiat")]
+    public decimal AmountInFiat { get; set; }
+
+    [JsonPropertyName("amount_usd")]
+    public decimal AmountUsd { get; set; }
+
+    [JsonPropertyName("amount_to_pay")]
+    public decimal AmountToPay { get; set; }
+
+    [JsonPropertyName("amount_to_pay_usd")]
+    public decimal AmountToPayUsd { get; set; }
 
     [JsonPropertyName("amount_paid")]
     public decimal AmountPaid { get; set; }
@@ -103,6 +115,33 @@ public class PostbackInvoiceInfo
     [JsonPropertyName("received_usd")]
     public decimal ReceivedUsd { get; set; }
 
+    [JsonPropertyName("to_surcharge")]
+    public decimal ToSurcharge { get; set; }
+
+    [JsonPropertyName("to_surcharge_usd")]
+    public decimal ToSurchargeUsd { get; set; }
+
+    [JsonPropertyName("total_rub")]
+    public decimal TotalRub { get; set; }
+
+    [JsonPropertyName("step")]
+    public string? Step { get; set; }
+
     [JsonPropertyName("test_mode")]
-    public bool TestMode { get; set; }
+    public bool? TestMode { get; set; }
+
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+
+    [JsonPropertyName("aml_enabled")]
+    public bool? AmlEnabled { get; set; }
+
+    [JsonPropertyName("aml_side")]
+    public string? AmlSide { get; set; }
+
+    [JsonPropertyName("aml_checks")]
+    public object? AmlChecks { get; set; }
+
+    [JsonPropertyName("links_invoice")]
+    public string? LinksInvoice { get; set; }
 }

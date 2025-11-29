@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+using System.Text.Json;
 
 namespace CryptoCloudApi.Controllers;
 
@@ -35,55 +36,114 @@ public class PostbackController : ControllerBase
     /// <summary>
     /// Receive automatic payment notification from CryptoCloud
     /// </summary>
-    /// <param name="notification">Postback notification containing payment details and JWT token</param>
     /// <returns>Confirmation of postback receipt</returns>
     /// <remarks>
     /// This endpoint is called automatically by CryptoCloud when a payment is completed.
-    /// 
-    /// **Configuration:**
-    /// Configure this URL in your CryptoCloud project settings as the postback URL:
-    /// ```
-    /// https://yourdomain.com/api/postback/notify
-    /// ```
-    /// 
-    /// **Security:**
-    /// All postback notifications are verified using JWT token signatures.
-    /// The token is signed with your secret key using HS256 algorithm.
-    /// Invalid or expired tokens are rejected.
-    /// 
-    /// **Sample Postback:**
-    /// ```json
-    /// {
-    ///   "status": "success",
-    ///   "invoice_id": "INV-XXXXXXXX",
-    ///   "amount_crypto": 50.123456,
-    ///   "currency": "USDT_TRC20",
-    ///   "order_id": "ORDER-001",
-    ///   "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
-    /// }
-    /// ```
+    /// Supports both application/json and application/x-www-form-urlencoded content types.
     /// </remarks>
-    /// <response code="200">Postback received and processed successfully</response>
-    /// <response code="400">Invalid notification data</response>
-    /// <response code="401">Invalid or expired JWT token</response>
-    /// <response code="500">Failed to process notification</response>
     [HttpPost("notify")]
+    [Consumes("application/json", "application/x-www-form-urlencoded")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> ReceiveNotification([FromBody] PostbackNotification notification)
+    public async Task<IActionResult> ReceiveNotification()
     {
+        PostbackNotification? notification = null;
+
         try
         {
+            // Check content type and parse accordingly
+            string? contentType = Request.ContentType?.ToLower() ?? "";
+
+            if (contentType.Contains("application/x-www-form-urlencoded") || Request.HasFormContentType)
+            {
+                // Parse form-urlencoded data
+                IFormCollection? form = await Request.ReadFormAsync();
+                notification = new PostbackNotification();
+
+                if (form.TryGetValue("status", out var status))
+                    notification.Status = status.ToString();
+
+                if (form.TryGetValue("invoice_id", out var invoiceId))
+                    notification.InvoiceId = invoiceId.ToString();
+
+                if (form.TryGetValue("invoice_info", out var invoiceInfo))
+                {
+                    try
+                    {
+                        string invoiceInfoJson = invoiceInfo.ToString();
+                        if (!string.IsNullOrEmpty(invoiceInfoJson))
+                        {
+                            // Validate it looks like JSON before attempting to deserialize
+                            invoiceInfoJson = invoiceInfoJson.Trim();
+                            if (invoiceInfoJson.StartsWith("{") || invoiceInfoJson.StartsWith("["))
+                            {
+                                notification.InvoiceInfo = JsonSerializer.Deserialize<PostbackInvoiceInfo>(invoiceInfoJson);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("invoice_info field does not contain valid JSON format. Value: {InvoiceInfo}",
+                                    invoiceInfoJson.Length > 100 ? invoiceInfoJson.Substring(0, 100) + "..." : invoiceInfoJson);
+                            }
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to parse invoice_info JSON");
+                    }
+                }
+
+                if (form.TryGetValue("amount_crypto", out var amountCrypto) 
+                    && decimal.TryParse(amountCrypto.ToString(), out var amt))
+                    notification.AmountCrypto = amt;
+
+                if (form.TryGetValue("currency", out var currency))
+                    notification.Currency = currency.ToString();
+
+                if (form.TryGetValue("order_id", out var orderId))
+                    notification.OrderId = orderId.ToString();
+
+                if (form.TryGetValue("token", out var token))
+                    notification.Token = token.ToString();
+
+                _logger.LogInformation("Parsed form-urlencoded postback: invoice_id={InvoiceId}, status={Status}, currency={Currency}, amount={Amount}", 
+                    notification.InvoiceId, notification.Status, notification.Currency, notification.AmountCrypto);
+            }
+            else if (contentType.Contains("application/json"))
+            {
+                // Parse JSON data
+                using StreamReader? reader = new StreamReader(Request.Body);
+                string? body = await reader.ReadToEndAsync();
+                
+                if (!string.IsNullOrEmpty(body))
+                {
+                    notification = JsonSerializer.Deserialize<PostbackNotification>(body);
+                    _logger.LogInformation("Parsed JSON postback: invoice_id={InvoiceId}, status={Status}", 
+                        notification?.InvoiceId, notification?.Status);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Unsupported content type: {ContentType}", Request.ContentType);
+                return BadRequest(new { message = $"Unsupported content type: {Request.ContentType}" });
+            }
+
             if (notification == null)
             {
-                _logger.LogWarning("Received null postback notification");
+                _logger.LogWarning("Failed to parse postback notification");
                 return BadRequest(new { message = "Invalid notification data" });
             }
 
             _logger.LogInformation("Received postback for invoice {InvoiceId}, status {Status}", 
                 notification.InvoiceId, notification.Status);
+
+            // Validate minimal required fields
+            if (string.IsNullOrEmpty(notification.Token) || string.IsNullOrEmpty(notification.InvoiceId))
+            {
+                _logger.LogWarning("Postback missing token or invoice id");
+                return BadRequest(new { message = "Missing token or invoice_id" });
+            }
 
             // Verify JWT token signature
             if (!VerifyToken(notification.Token, notification.InvoiceId))
@@ -93,7 +153,7 @@ public class PostbackController : ControllerBase
             }
 
             // Process the postback
-            var success = await _invoiceService.ProcessPostbackAsync(notification);
+            bool success = await _invoiceService.ProcessPostbackAsync(notification);
 
             if (!success)
             {
@@ -109,28 +169,13 @@ public class PostbackController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing postback notification");
-            return StatusCode(500, new { message = "Internal server error" });
+            return StatusCode(500, new { message = "Internal server error", error = ex.Message });
         }
     }
 
     /// <summary>
     /// Test endpoint to verify postback URL is accessible
     /// </summary>
-    /// <returns>Status information and endpoint URL</returns>
-    /// <remarks>
-    /// Use this endpoint to verify your postback webhook is properly configured and accessible.
-    /// 
-    /// **Usage:**
-    /// ```bash
-    /// curl https://yourdomain.com/api/postback/test
-    /// ```
-    /// 
-    /// **For local development with ngrok:**
-    /// 1. Start ngrok: `ngrok http 5001`
-    /// 2. Test the endpoint with ngrok URL
-    /// 3. Configure the ngrok URL in CryptoCloud dashboard
-    /// </remarks>
-    /// <response code="200">Postback endpoint is working</response>
     [HttpGet("test")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult TestEndpoint()
@@ -140,7 +185,8 @@ public class PostbackController : ControllerBase
             message = "Postback endpoint is working",
             timestamp = DateTime.UtcNow,
             endpoint = $"{Request.Scheme}://{Request.Host}/api/postback/notify",
-            note = "Configure this URL as your postback URL in CryptoCloud dashboard"
+            note = "Configure this URL as your postback URL in CryptoCloud dashboard",
+            supported_content_types = new[] { "application/json", "application/x-www-form-urlencoded" }
         });
     }
 
