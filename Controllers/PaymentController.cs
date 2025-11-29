@@ -9,18 +9,10 @@ namespace CryptoCloudApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-public class PaymentController : ControllerBase
+public class PaymentController(
+    InvoiceManagementService invoiceService,
+    ILogger<PaymentController> logger) : ControllerBase
 {
-    private readonly InvoiceManagementService _invoiceService;
-    private readonly ILogger<PaymentController> _logger;
-
-    public PaymentController(
-        InvoiceManagementService invoiceService,
-        ILogger<PaymentController> logger)
-    {
-        _invoiceService = invoiceService;
-        _logger = logger;
-    }
 
     /// <summary>
     /// Create a new payment invoice
@@ -62,7 +54,7 @@ public class PaymentController : ControllerBase
                 };
             }
 
-            var invoice = await _invoiceService.CreateInvoiceAsync(
+            var invoice = await invoiceService.CreateInvoiceAsync(
                 request.OrderId,
                 request.Amount,
                 request.Currency,
@@ -92,7 +84,7 @@ public class PaymentController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating invoice");
+            logger.LogError(ex, "Error creating invoice");
             return StatusCode(500, new { message = "Internal server error" });
         }
     }
@@ -112,7 +104,7 @@ public class PaymentController : ControllerBase
                 invoiceUuid = $"INV-{invoiceUuid}";
             }
 
-            var invoice = await _invoiceService.GetInvoiceAsync(invoiceUuid);
+            var invoice = await invoiceService.GetInvoiceAsync(invoiceUuid);
 
             if (invoice == null)
             {
@@ -151,7 +143,7 @@ public class PaymentController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting invoice {InvoiceUuid}", invoiceUuid);
+            logger.LogError(ex, "Error getting invoice {InvoiceUuid}", invoiceUuid);
             return StatusCode(500, new { message = "Internal server error" });
         }
     }
@@ -165,7 +157,7 @@ public class PaymentController : ControllerBase
     {
         try
         {
-            var invoice = await _invoiceService.GetInvoiceByOrderIdAsync(orderId);
+            var invoice = await invoiceService.GetInvoiceByOrderIdAsync(orderId);
 
             if (invoice == null)
             {
@@ -204,7 +196,7 @@ public class PaymentController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting invoice by order ID {OrderId}", orderId);
+            logger.LogError(ex, "Error getting invoice by order ID {OrderId}", orderId);
             return StatusCode(500, new { message = "Internal server error" });
         }
     }
@@ -224,14 +216,14 @@ public class PaymentController : ControllerBase
                 invoiceUuid = $"INV-{invoiceUuid}";
             }
 
-            var success = await _invoiceService.UpdateInvoiceStatusAsync(invoiceUuid);
+            var success = await invoiceService.UpdateInvoiceStatusAsync(invoiceUuid);
 
             if (!success)
             {
                 return NotFound(new { message = "Failed to refresh invoice status" });
             }
 
-            var invoice = await _invoiceService.GetInvoiceAsync(invoiceUuid);
+            var invoice = await invoiceService.GetInvoiceAsync(invoiceUuid);
 
             return Ok(new
             {
@@ -244,7 +236,7 @@ public class PaymentController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error refreshing invoice status {InvoiceUuid}", invoiceUuid);
+            logger.LogError(ex, "Error refreshing invoice status {InvoiceUuid}", invoiceUuid);
             return StatusCode(500, new { message = "Internal server error" });
         }
     }
@@ -257,7 +249,7 @@ public class PaymentController : ControllerBase
     {
         try
         {
-            InvoiceStatistics? stats = await _invoiceService.GetStatisticsAsync();
+            InvoiceStatistics? stats = await invoiceService.GetStatisticsAsync();
 
             return Ok(new
             {
@@ -275,7 +267,7 @@ public class PaymentController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting statistics");
+            logger.LogError(ex, "Error getting statistics");
             return StatusCode(500, new { message = "Internal server error" });
         }
     }
