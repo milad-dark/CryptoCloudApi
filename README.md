@@ -11,6 +11,7 @@ A complete .NET 10 API integration for CryptoCloud cryptocurrency payment gatewa
 ? **Database Persistence** - SQLite database for invoice and transaction storage
 ? **Transaction History** - Track all blockchain transactions for each invoice
 ? **Payment Statistics** - Real-time payment analytics and reporting
+? **Swagger UI** - Interactive API documentation and testing
 
 ## Quick Start
 
@@ -45,9 +46,21 @@ dotnet run
 
 The API will start on `https://localhost:5001` or `http://localhost:5000`
 
-### 3. Test the Integration
+### 3. Open Swagger UI
 
-**Create a payment invoice:**
+Navigate to `https://localhost:5001/` to access the interactive API documentation.
+
+![Swagger UI](https://via.placeholder.com/800x400?text=Swagger+UI+Interface)
+
+### 4. Test the Integration
+
+**Using Swagger UI:**
+1. Open `https://localhost:5001/`
+2. Click on **POST /api/payment/create**
+3. Click **Try it out**
+4. Edit the request body and click **Execute**
+
+**Using cURL:**
 
 ```bash
 curl -X POST https://localhost:5001/api/payment/create \
@@ -70,6 +83,23 @@ curl -X POST https://localhost:5001/api/payment/create \
   "status": "created"
 }
 ```
+
+## API Documentation
+
+### Interactive Documentation (Swagger UI)
+
+Access the full interactive API documentation at:
+- **Development:** `https://localhost:5001/`
+- **Production:** `https://yourdomain.com/swagger`
+
+Features:
+- ?? Complete endpoint documentation
+- ?? Test API calls directly from browser
+- ?? Request/response examples
+- ?? Download OpenAPI specification
+- ?? Search and filter endpoints
+
+See [SWAGGER.md](SWAGGER.md) for detailed Swagger UI guide.
 
 ## API Endpoints
 

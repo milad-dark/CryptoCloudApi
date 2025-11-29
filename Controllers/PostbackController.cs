@@ -10,61 +10,105 @@ using System.Text;
 namespace CryptoCloudApi.Controllers;
 
 /// <summary>
-/// Controller for receiving postback notifications from CryptoCloud
+/// Webhook endpoint for receiving payment notifications from CryptoCloud
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-public class PostbackController(
-    InvoiceManagementService invoiceService,
-    IOptions<CryptoCloudSettings> settings,
-    ILogger<PostbackController> logger) : ControllerBase
+[Produces("application/json")]
+[Tags("Webhook / Postback")]
+public class PostbackController : ControllerBase
 {
+    private readonly InvoiceManagementService _invoiceService;
+    private readonly CryptoCloudSettings _settings;
+    private readonly ILogger<PostbackController> _logger;
+
+    public PostbackController(
+        InvoiceManagementService invoiceService,
+        IOptions<CryptoCloudSettings> settings,
+        ILogger<PostbackController> logger)
+    {
+        _invoiceService = invoiceService;
+        _settings = settings.Value;
+        _logger = logger;
+    }
+
     /// <summary>
-    /// Receive postback notification from CryptoCloud when payment is completed
+    /// Receive automatic payment notification from CryptoCloud
     /// </summary>
+    /// <param name="notification">Postback notification containing payment details and JWT token</param>
+    /// <returns>Confirmation of postback receipt</returns>
     /// <remarks>
     /// This endpoint is called automatically by CryptoCloud when a payment is completed.
-    /// Configure this URL in your CryptoCloud project settings as the postback URL.
-    /// Example: https://yourdomain.com/api/postback/notify
+    /// 
+    /// **Configuration:**
+    /// Configure this URL in your CryptoCloud project settings as the postback URL:
+    /// ```
+    /// https://yourdomain.com/api/postback/notify
+    /// ```
+    /// 
+    /// **Security:**
+    /// All postback notifications are verified using JWT token signatures.
+    /// The token is signed with your secret key using HS256 algorithm.
+    /// Invalid or expired tokens are rejected.
+    /// 
+    /// **Sample Postback:**
+    /// ```json
+    /// {
+    ///   "status": "success",
+    ///   "invoice_id": "INV-XXXXXXXX",
+    ///   "amount_crypto": 50.123456,
+    ///   "currency": "USDT_TRC20",
+    ///   "order_id": "ORDER-001",
+    ///   "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+    /// }
+    /// ```
     /// </remarks>
+    /// <response code="200">Postback received and processed successfully</response>
+    /// <response code="400">Invalid notification data</response>
+    /// <response code="401">Invalid or expired JWT token</response>
+    /// <response code="500">Failed to process notification</response>
     [HttpPost("notify")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> ReceiveNotification([FromBody] PostbackNotification notification)
     {
         try
         {
             if (notification == null)
             {
-                logger.LogWarning("Received null postback notification");
+                _logger.LogWarning("Received null postback notification");
                 return BadRequest(new { message = "Invalid notification data" });
             }
 
-            logger.LogInformation("Received postback for invoice {InvoiceId}, status {Status}", 
+            _logger.LogInformation("Received postback for invoice {InvoiceId}, status {Status}", 
                 notification.InvoiceId, notification.Status);
 
             // Verify JWT token signature
             if (!VerifyToken(notification.Token, notification.InvoiceId))
             {
-                logger.LogWarning("Invalid JWT token for invoice {InvoiceId}", notification.InvoiceId);
+                _logger.LogWarning("Invalid JWT token for invoice {InvoiceId}", notification.InvoiceId);
                 return Unauthorized(new { message = "Invalid token signature" });
             }
 
             // Process the postback
-            var success = await invoiceService.ProcessPostbackAsync(notification);
+            var success = await _invoiceService.ProcessPostbackAsync(notification);
 
             if (!success)
             {
-                logger.LogError("Failed to process postback for invoice {InvoiceId}", notification.InvoiceId);
+                _logger.LogError("Failed to process postback for invoice {InvoiceId}", notification.InvoiceId);
                 return StatusCode(500, new { message = "Failed to process notification" });
             }
 
-            logger.LogInformation("Postback processed successfully for invoice {InvoiceId}", notification.InvoiceId);
+            _logger.LogInformation("Postback processed successfully for invoice {InvoiceId}", notification.InvoiceId);
 
             // Return success response
             return Ok(new { message = "Postback received", invoice_id = notification.InvoiceId });
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error processing postback notification");
+            _logger.LogError(ex, "Error processing postback notification");
             return StatusCode(500, new { message = "Internal server error" });
         }
     }
@@ -72,14 +116,31 @@ public class PostbackController(
     /// <summary>
     /// Test endpoint to verify postback URL is accessible
     /// </summary>
+    /// <returns>Status information and endpoint URL</returns>
+    /// <remarks>
+    /// Use this endpoint to verify your postback webhook is properly configured and accessible.
+    /// 
+    /// **Usage:**
+    /// ```bash
+    /// curl https://yourdomain.com/api/postback/test
+    /// ```
+    /// 
+    /// **For local development with ngrok:**
+    /// 1. Start ngrok: `ngrok http 5001`
+    /// 2. Test the endpoint with ngrok URL
+    /// 3. Configure the ngrok URL in CryptoCloud dashboard
+    /// </remarks>
+    /// <response code="200">Postback endpoint is working</response>
     [HttpGet("test")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult TestEndpoint()
     {
         return Ok(new 
         { 
             message = "Postback endpoint is working",
             timestamp = DateTime.UtcNow,
-            endpoint = $"{Request.Scheme}://{Request.Host}/api/postback/notify"
+            endpoint = $"{Request.Scheme}://{Request.Host}/api/postback/notify",
+            note = "Configure this URL as your postback URL in CryptoCloud dashboard"
         });
     }
 
@@ -90,16 +151,16 @@ public class PostbackController(
     {
         try
         {
-            if (string.IsNullOrEmpty(settings.Value.SecretKey))
+            if (string.IsNullOrEmpty(_settings.SecretKey))
             {
-                logger.LogWarning("SecretKey not configured, skipping token verification");
+                _logger.LogWarning("SecretKey not configured, skipping token verification");
                 return true; // Allow in development if secret not set
             }
 
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.UTF8.GetBytes(settings.Value.SecretKey);
+            JwtSecurityTokenHandler? tokenHandler = new JwtSecurityTokenHandler();
+            byte[]? key = Encoding.UTF8.GetBytes(_settings.SecretKey);
 
-            var validationParameters = new TokenValidationParameters
+            TokenValidationParameters? validationParameters = new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey = new SymmetricSecurityKey(key),
@@ -111,24 +172,24 @@ public class PostbackController(
 
             tokenHandler.ValidateToken(token, validationParameters, out SecurityToken validatedToken);
 
-            var jwtToken = (JwtSecurityToken)validatedToken;
+            JwtSecurityToken? jwtToken = (JwtSecurityToken)validatedToken;
 
             // Verify invoice UUID is in the token
-            var uuidClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "id" || c.Type == "uuid")?.Value;
+            string? uuidClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "id" || c.Type == "uuid")?.Value;
             
             if (string.IsNullOrEmpty(uuidClaim))
             {
-                logger.LogWarning("JWT token does not contain invoice UUID");
+                _logger.LogWarning("JWT token does not contain invoice UUID");
                 return false;
             }
 
             // The UUID in token might be without INV- prefix
-            var normalizedTokenUuid = uuidClaim.StartsWith("INV-") ? uuidClaim : $"INV-{uuidClaim}";
-            var normalizedInvoiceId = invoiceId.StartsWith("INV-") ? invoiceId : $"INV-{invoiceId}";
+            string? normalizedTokenUuid = uuidClaim.StartsWith("INV-") ? uuidClaim : $"INV-{uuidClaim}";
+            string? normalizedInvoiceId = invoiceId.StartsWith("INV-") ? invoiceId : $"INV-{invoiceId}";
 
             if (normalizedTokenUuid != normalizedInvoiceId)
             {
-                logger.LogWarning("Invoice UUID mismatch. Token: {TokenUuid}, Invoice: {InvoiceId}", 
+                _logger.LogWarning("Invoice UUID mismatch. Token: {TokenUuid}, Invoice: {InvoiceId}", 
                     normalizedTokenUuid, normalizedInvoiceId);
                 return false;
             }
@@ -137,17 +198,17 @@ public class PostbackController(
         }
         catch (SecurityTokenExpiredException)
         {
-            logger.LogWarning("JWT token has expired for invoice {InvoiceId}", invoiceId);
+            _logger.LogWarning("JWT token has expired for invoice {InvoiceId}", invoiceId);
             return false;
         }
         catch (SecurityTokenException ex)
         {
-            logger.LogWarning(ex, "Invalid JWT token for invoice {InvoiceId}", invoiceId);
+            _logger.LogWarning(ex, "Invalid JWT token for invoice {InvoiceId}", invoiceId);
             return false;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error verifying JWT token for invoice {InvoiceId}", invoiceId);
+            _logger.LogError(ex, "Error verifying JWT token for invoice {InvoiceId}", invoiceId);
             return false;
         }
     }

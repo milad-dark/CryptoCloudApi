@@ -4,11 +4,34 @@ using CryptoCloudApi.Models.Configuration;
 using CryptoCloudApi.Services;
 using Microsoft.EntityFrameworkCore;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+
+// Configure Swagger/OpenAPI
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new()
+    {
+        Version = "v1",
+        Title = "CryptoCloud Payment API",
+        Description = "Complete .NET API integration for CryptoCloud cryptocurrency payment gateway with automatic transaction monitoring and postback handling"
+    });
+
+    // Add XML comments if available
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        options.IncludeXmlComments(xmlPath);
+    }
+
+    // Group endpoints by tags
+    options.TagActionsBy(api => new[] { api.GroupName ?? api.ActionDescriptor.RouteValues["controller"] ?? "Unknown" });
+    options.DocInclusionPredicate((name, api) => true);
+});
 
 // Configure CryptoCloud settings
 builder.Services.Configure<CryptoCloudSettings>(
@@ -40,22 +63,32 @@ builder.Services.AddCors(options =>
     });
 });
 
-var app = builder.Build();
+WebApplication app = builder.Build();
 
 // Create database on startup
-using (var scope = app.Services.CreateScope())
+using (IServiceScope? scope = app.Services.CreateScope())
 {
-    var dbContext = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
+    PaymentDbContext? dbContext = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
     dbContext.Database.EnsureCreated();
     
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    ILogger<Program>? logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     logger.LogInformation("Database initialized successfully");
 }
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "CryptoCloud Payment API v1");
+        options.RoutePrefix = "swagger"; 
+        options.DocumentTitle = "CryptoCloud Payment API";
+        options.DisplayRequestDuration();
+        options.EnableFilter();
+        options.EnableDeepLinking();
+    });
+    
     app.UseCors();
 }
 
