@@ -1,4 +1,4 @@
-# CryptoCloud Payment Integration API
+# CryptoCloud .Net (Asp.Net) Payment Integration API Client
 
 A complete .NET 10 API integration for CryptoCloud cryptocurrency payment gateway with automatic transaction monitoring and postback handling.
 
